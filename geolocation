@@ -1,0 +1,553 @@
+import pygame, requests, sys, os, math
+my_step = 0.001
+class MapParams(object):
+    def __init__(self):
+        self.lat = 55.755650  # Координаты центра карты на старте (0 километр).
+        self.lon = 37.6185919
+        self.lat1 = self.lat  # Координаты, в дальнейшем координаты метки я.
+        self.lon1 = self.lon
+        self.dot1 = (self.lat1, self.lon1)
+        self.zoom = 15  # Масштаб карты на старте. Изменяется от 1 до 19
+        self.type = "map" # Другие значения "sat", "sat,skl". Тип карты
+        self.size_h = 650
+        self.size_w = 450
+        self.org_mas = [] # Массив огранизаций
+        self.org_name = ['']*99 # Массив названий огранизаций
+        self.org_metro = [] # Массив метро
+        self.org_jd = [] # Массив жд
+        self.org_ost = [] # Массив остановок
+        self.api_key = "d743673c-16a2-405b-9676-ac3265ae4318" # Api key геокодера
+        self.api_key2 = "41f9a39b-f9e4-460c-9881-4adf7080e1a3" # Api key поиска по организациям
+        self.text = 'Введите адрес'
+        self.text1 = '1000'
+        self.text2 = 'Введите запрос'
+        self.text3 = 'остановки'
+        self.text4 = 'метро'
+        self.text5 = 'ж/д станции'
+        self.count = 0
+        self.count1 = 0
+        self.count2 = 0
+        self.count3 = 0
+        
+
+ 
+    # Преобразование координат в параметр ll, требуется без пробелов, через запятую и без скобок
+    def ll(self):
+        return str(self.lon)+","+str(self.lat)
+
+    # Преобразование координат в параметр ll, требуется без пробелов, через запятую и без скобок
+    def ll_1(self):
+        return str(self.lon1)+","+str(self.lat1)
+
+    # Преобразование координат рамки
+    def ll_2(self):
+        return str(self.lon1-float(self.text1)*0.000008)+","+str(self.lat1+float(self.text1)*0.0000046)+"~"+str(self.lon1+float(self.text1)*0.000008)+","+str(self.lat1-float(self.text1)*0.0000046)
+
+    # Преобразование координат зоны поиска
+    def hw(self):
+        return str(self.size_h)+","+str(self.size_w)
+
+    # Преобразование координат линий
+    def ppl(self):
+        global p1
+        p1 = ""
+        for i in range (5):
+            p1 += str(self.lon1)+","+str(self.lat1)+","+str(self.mumu[i][1])+","+str(self.mumu[i][0])+"~"
+        p1 = p1[0:-1]
+
+    # Преобразование координат рамки
+    def opl(self):
+        global p3
+        p3 = ""
+        if self.text1 != '':
+            p3 = str(self.lon1-float(self.text1)*0.000008)+","+str(self.lat1+float(self.text1)*0.0000046)+","+str(self.lon1-float(self.text1)*0.000008)+","+str(self.lat1-float(self.text1)*0.0000046)+","+str(self.lon1+float(self.text1)*0.000008)+","+str(self.lat1-float(self.text1)*0.0000046)+","+str(self.lon1+float(self.text1)*0.000008)+","+str(self.lat1+float(self.text1)*0.0000046)+","+str(self.lon1-float(self.text1)*0.000008)+","+str(self.lat1+float(self.text1)*0.0000046)
+        else:
+            p3 = ""
+
+    # Преобразование координат меток организаций
+    def ppt(self):
+        global p2
+        p2 = ""
+        for i in range (self.count):
+            if i == self.count - 1:
+                p2 += str(self.org_mas[i][1])+","+str(self.org_mas[i][0])+",pmrdl"+str(int(i+1))+"~"
+            else:
+                p2 += str(self.org_mas[i][1])+","+str(self.org_mas[i][0])+",pmwtl"+str(int(i+1))+"~"
+        p2 = p2 + str(self.lon1)+","+str(self.lat1)+",ya_ru"
+
+    # Преобразование координат меток остановок
+    def ppt_ost(self):
+        global p4
+        p4 = ""
+        for i in range (self.count1):
+            p4 += str(self.org_ost[i][1])+","+str(self.org_ost[i][0])+",pm2dbm"+"~"
+        
+
+    # Преобразование координат меток метро
+    def ppt_metro(self):
+        global p5
+        p5 = ""
+        for i in range (self.count2):
+            p5 += str(self.org_metro[i][1])+","+str(self.org_metro[i][0])+",pm2rdm"+"~"
+
+    # Преобразование координат меток жд станций
+    def ppt_jd(self):
+        global p6
+        p6 = ""
+        for i in range (self.count3):
+            p6 += str(self.org_jd[i][1])+","+str(self.org_jd[i][0])+",pm2vvm"+"~"
+
+
+    # Обновление карты при сдвиге и масштабе
+    def update (self, event):
+        if event.key == 61 and self.zoom < 19: # +
+            self.zoom += 1
+        elif event.key == 45 and self.zoom > 1: # -
+            self.zoom -= 1
+        elif event.key == 276:
+            self.lon -= my_step * math.pow(2, 15 - self.zoom)
+        elif event.key == 275:
+            self.lon += my_step * math.pow(2, 15 - self.zoom)
+        elif event.key == 273 and self.lat < 85:
+            self.lat += my_step * math.pow(2, 15 - self.zoom)
+        elif event.key == 274 and self.lat > -85:
+            self.lat -= my_step * math.pow(2, 15 - self.zoom)
+
+# Создание карты с соответствующими параметрами.
+def load_map(mp):
+    #mp.ppl()
+    mp.opl()
+    mp.ppt()
+    mp.ppt_ost()
+    mp.ppt_metro()
+    mp.ppt_jd()
+    map_request = "http://static-maps.yandex.ru/1.x/?ll={ll}&z={z}&l={type}&size={size}&pl={pl}&pt={pt}".format(ll=mp.ll(), z=mp.zoom, type=mp.type, size=mp.hw(), pl=p3, pt=(p4+p5+p6+p2))
+    response = requests.get(map_request)
+    if not response:
+        print("Ошибка выполнения запроса:")
+        print(map_request)
+        print("Http статус:", response.status_code, "(", response.reason, ")")
+        sys.exit(1)
+ 
+    # Запись полученного изображения в файл.
+    map_file = "map.png"
+    try:
+        with open(map_file, "wb") as file:
+            file.write(response.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return map_file
+
+# Запрос к геокодеру и запись файла ответа
+def load_geo(mp):
+    geo_request = "https://geocode-maps.yandex.ru/1.x/?format=json&apikey={api}&geocode={geo}".format(api=mp.api_key, geo=mp.text)
+    response_geo = requests.get(geo_request)
+    if not response_geo:
+        print("Ошибка выполнения запроса:")
+        print(geo_request)
+        print("Http статус:", response_geo.status_code, "(", response_geo.reason, ")")
+        sys.exit(1)
+ 
+    # Запись в файл.
+    geo_file = "geo.txt"
+    try:
+        with open(geo_file, "wb") as file:
+            file.write(response_geo.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return geo_file
+
+# Запрос к поиску по организациям и запись файла ответа
+def load_org(mp):
+    org_request = "https://search-maps.yandex.ru/v1/?text={org}&apikey={api}&ll={ll}&bbox={box}&type=biz&lang=ru_RU&rspn=1&results=500".format(api=mp.api_key2, org=mp.text2, ll=mp.ll_1(), box=mp.ll_2())
+    response_org = requests.get(org_request)
+    if not response_org:
+        print("Ошибка выполнения запроса:")
+        print(org_request)
+        print("Http статус:", response_org.status_code, "(", response_org.reason, ")")
+        sys.exit(1)
+ 
+    # Запись в файл.
+    org_file = "org.txt"
+    try:
+        with open(org_file, "wb") as file:
+            file.write(response_org.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return org_file
+
+# Запрос к поиску по организациям и запись файла ответа
+def load_ost(mp):
+    ost_request = "https://search-maps.yandex.ru/v1/?text={org}&apikey={api}&ll={ll}&bbox={box}&type=biz&lang=en_US&rspn=1&results=500".format(api=mp.api_key2, org=mp.text3, ll=mp.ll_1(), box=mp.ll_2())
+    response_ost = requests.get(ost_request)
+    if not response_ost:
+        print("Ошибка выполнения запроса:")
+        print(ost_request)
+        print("Http статус:", response_ost.status_code, "(", response_ost.reason, ")")
+        sys.exit(1)
+ 
+    # Запись в файл.
+    ost_file = "ost.txt"
+    try:
+        with open(ost_file, "wb") as file:
+            file.write(response_ost.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return ost_file
+
+# Запрос к поиску по организациям и запись файла ответа
+def load_metro(mp):
+    metro_request = "https://search-maps.yandex.ru/v1/?text={org}&apikey={api}&ll={ll}&bbox={box}&type=biz&lang=en_US&rspn=1&results=500".format(api=mp.api_key2, org=mp.text4, ll=mp.ll_1(), box=mp.ll_2())
+    response_metro = requests.get(metro_request)
+    if not response_metro:
+        print("Ошибка выполнения запроса:")
+        print(metro_request)
+        print("Http статус:", response_metro.status_code, "(", response_metro.reason, ")")
+        sys.exit(1)
+ 
+    # Запись в файл.
+    metro_file = "metro.txt"
+    try:
+        with open(metro_file, "wb") as file:
+            file.write(response_metro.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return metro_file
+
+# Запрос к поиску по организациям и запись файла ответа
+def load_jd(mp):
+    jd_request = "https://search-maps.yandex.ru/v1/?text={org}&apikey={api}&ll={ll}&bbox={box}&type=biz&lang=en_US&rspn=1&results=500".format(api=mp.api_key2, org=mp.text5, ll=mp.ll_1(), box=mp.ll_2())
+    response_jd = requests.get(jd_request)
+    if not response_jd:
+        print("Ошибка выполнения запроса:")
+        print(jd_request)
+        print("Http статус:", response_jd.status_code, "(", response_jd.reason, ")")
+        sys.exit(1)
+ 
+    # Запись в файл.
+    jd_file = "jd.txt"
+    try:
+        with open(jd_file, "wb") as file:
+            file.write(response_jd.content)
+    except IOError as ex:
+        print("Ошибка записи временного файла:", ex)
+        sys.exit(2)
+    return jd_file
+         
+def main():
+    # Инициализируем pygame
+    pygame.init()
+    pygame.display.set_caption("Геопозиция для бизнеса. © 2020 Новиков Тимофей")
+    screen = pygame.display.set_mode((650, 450))
+    mp = MapParams()
+    # Инициализируем текстовые поля запросов
+    font = pygame.font.Font(None, 32)
+    font2 = pygame.font.Font('freesansbold.ttf', 10)
+    clock = pygame.time.Clock()
+    input_box = pygame.Rect(10, 10, 20, 40)
+    input_box1 = pygame.Rect(10, 60, 20, 40)
+    input_box2 = pygame.Rect(10, 110, 20, 40)
+    color_inactive = pygame.Color('blue')
+    color_active = pygame.Color('red')
+    color = color_inactive
+    active = False
+    color_inactive1 = pygame.Color('blue')
+    color_active1 = pygame.Color('red')
+    color1 = color_inactive1
+    active1 = False
+    color_inactive2 = pygame.Color('blue')
+    color_active2 = pygame.Color('red')
+    color2 = color_inactive2
+    active2 = False
+    
+    while True:
+        event = pygame.event.wait()
+        if event.type == pygame.QUIT:  # Выход из программы
+            break
+        if event.type == pygame.KEYUP: # Обновляем карту при нажатии на стрелки и + -
+            mp.update(event)
+        if event.type == pygame.MOUSEBUTTONDOWN: # Обрабатываем события с мышкой
+            if input_box.collidepoint(event.pos):
+                active = not active
+                mp.text = ''
+            else:
+                active = False
+            color = color_active if active else color_inactive
+
+            if input_box1.collidepoint(event.pos):
+                active1 = not active1
+                mp.text1 = ''
+            else:
+                active1 = False
+            color1 = color_active1 if active1 else color_inactive1
+
+            if input_box2.collidepoint(event.pos):
+                active2 = not active2
+                mp.text2 = ''
+            else:
+                active2 = False
+            color2 = color_active2 if active2 else color_inactive2
+            
+        if event.type == pygame.KEYDOWN: 
+            if active:
+                if event.key == pygame.K_RETURN: # Обрабатываем событие при нажатии ВВОД
+                    geo_file = load_geo(mp)
+                    with open(geo_file, "r", encoding='utf-8') as file:
+                        content = file.read()
+                        d = content.find('{"pos":"')
+                        d1 = content.find('"}',d+8)
+                        content1=content[d+8:d1]
+                        lst = content1.split()
+                        mp.lon = float(lst[0])
+                        mp.lat = float(lst[1])
+                        mp.lon1 = float(lst[0])
+                        mp.lat1 = float(lst[1])
+                        mp.ppt()
+                        print(content1)
+                    print(mp.text)
+                    mp.text = 'Введите Ваш адрес'
+                elif event.key == pygame.K_BACKSPACE:
+                    mp.text = mp.text[:-1]
+                else:
+                    mp.text += event.unicode
+
+            if active1:
+                if event.key == pygame.K_RETURN:
+                    print(mp.text1)
+                elif event.key == pygame.K_BACKSPACE:
+                    mp.text1 = mp.text1[:-1]
+                else:
+                    mp.text1 += event.unicode
+
+            if active2:
+                if event.key == pygame.K_RETURN:
+                    mp.org_mas = []
+                    mp.org_name = []
+                    mp.count = 0
+                    org_file = load_org(mp)
+                    with open(org_file, "r", encoding='utf-8') as file:
+                        content2 = file.read()
+                        mp.count = content2.count('Point","coordinates":[')
+                        if mp.count >=100:
+                            mp.count = 99
+                        d2 = 0
+                        w1 = 0
+                        for i in range(mp.count):
+                            d2 = content2.find('Point","coordinates":[', d2+50)
+                            d3 = content2.find(']', d2+22)
+                            content3=content2[d2+22:d3]
+                            lst2 = content3.split(',')
+                            mp.org_mas.append([])
+                            mp.org_mas[i].append(float(lst2[1]))
+                            mp.org_mas[i].append(float(lst2[0]))
+                            w1 = content2.find('{"name":"', w1+50)
+                            w2 = content2.find('"', w1+9)
+                            content_w = content2[w1+9:w2]
+                            lstw = content_w.split(',')
+                            mp.org_name.append(str(i+1)+'-'+lstw[0])
+                            #mp.org_name[i].append(lstw[0])
+                        #print(mp.org_name)
+                        for m in range(99 - mp.count):
+                            mp.org_name.append('')
+                            
+                        mp.ppt()
+                    mp.org_ost = []
+                    mp.count1 = 0
+                    ost_file = load_ost(mp)
+                    with open(ost_file, "r", encoding='utf-8') as file:
+                        content4 = file.read()
+                        mp.count1 = content4.count('Point","coordinates":[')
+                        if mp.count+mp.count1 >= 100:
+                            mp.count1 = 99 - mp.count
+                        d4 = 0
+                        for i in range(mp.count1):
+                            d4 = content4.find('Point","coordinates":[', d4+50)
+                            d5 = content4.find(']', d4+22)
+                            content5=content4[d4+22:d5]
+                            lst3 = content5.split(',')
+                            mp.org_ost.append([])
+                            mp.org_ost[i].append(float(lst3[1]))
+                            mp.org_ost[i].append(float(lst3[0]))
+                        mp.ppt_ost()
+                    mp.org_metro = []
+                    mp.count2 = 0
+                    metro_file = load_metro(mp)
+                    with open(metro_file, "r", encoding='utf-8') as file:
+                        content6 = file.read()
+                        mp.count2 = content6.count('Point","coordinates":[')
+                        if mp.count+mp.count1+mp.count2 >= 100:
+                            mp.count2 = 99 - mp.count - mp.count1
+                        d6 = 0
+                        for i in range(mp.count2):
+                            d6 = content6.find('Point","coordinates":[', d6+50)
+                            d7 = content6.find(']', d6+22)
+                            content7=content6[d6+22:d7]
+                            lst4 = content7.split(',')
+                            mp.org_metro.append([])
+                            mp.org_metro[i].append(float(lst4[1]))
+                            mp.org_metro[i].append(float(lst4[0]))
+                        mp.ppt_metro()
+                    mp.org_jd = []
+                    mp.count3 = 0
+                    jd_file = load_jd(mp)
+                    with open(jd_file, "r", encoding='utf-8') as file:
+                        content8 = file.read()
+                        mp.count3 = content8.count('Point","coordinates":[')
+                        if mp.count+mp.count1+mp.count2+mp.count3 >= 100:
+                            mp.count3 = 99 - mp.count - mp.count1 - mp.count2
+                        d8 = 0
+                        for i in range(mp.count3):
+                            d8 = content8.find('Point","coordinates":[', d8+50)
+                            d9 = content8.find(']', d8+22)
+                            content9=content8[d8+22:d9]
+                            lst5 = content9.split(',')
+                            mp.org_jd.append([])
+                            mp.org_jd[i].append(float(lst5[1]))
+                            mp.org_jd[i].append(float(lst5[0]))
+                        mp.ppt_jd()
+                    mp.text2 = 'Ваш запрос'
+                elif event.key == pygame.K_BACKSPACE:
+                    mp.text2 = mp.text2[:-1]
+                else:
+                    mp.text2 += event.unicode
+
+            
+
+       
+
+        #Создаем файл
+        map_file = load_map(mp)
+        # Рисуем картинку, загружаемую из только что созданного файла.
+        screen.blit(pygame.image.load(map_file), (0, 0))
+        # Рисуем текст
+        txt_surface = font.render(mp.text, True, color)
+        width = max(200, txt_surface.get_width()+10)
+        input_box.w = width
+        screen.blit(txt_surface, (input_box.x+5, input_box.y+5))
+        pygame.draw.rect(screen, color, input_box, 2)
+        txt_surface1 = font.render(mp.text1, True, color1)
+        width1 = max(200, txt_surface1.get_width()+10)
+        input_box1.w = width1
+        screen.blit(txt_surface1, (input_box1.x+5, input_box1.y+5))
+        pygame.draw.rect(screen, color1, input_box1, 2)
+        txt_surface2 = font.render(mp.text2, True, color2)
+        width2 = max(200, txt_surface2.get_width()+10)
+        input_box2.w = width2
+        screen.blit(txt_surface2, (input_box2.x+5, input_box2.y+5))
+        pygame.draw.rect(screen, color2, input_box2, 2)
+        
+        if mp.count > 0:
+            text_z = font2.render('Список организаций:', True, (0,0,0), (255,255,255))
+            screen.blit(text_z, (520, 20))
+            text1_0 = font2.render(mp.org_name[0], True, (0,0,0), (255,255,255))
+            screen.blit(text1_0, (520, 30))
+            text1_1 = font2.render(mp.org_name[1], True, (0,0,0), (255,255,255))
+            screen.blit(text1_1, (520, 40))
+            text1_2 = font2.render(mp.org_name[2], True, (0,0,0), (255,255,255))
+            screen.blit(text1_2, (520, 50))
+            text1_3 = font2.render(mp.org_name[3], True, (0,0,0), (255,255,255))
+            screen.blit(text1_3, (520, 60))
+            text1_4 = font2.render(mp.org_name[4], True, (0,0,0), (255,255,255))
+            screen.blit(text1_4, (520, 70))
+            text1_5 = font2.render(mp.org_name[5], True, (0,0,0), (255,255,255))
+            screen.blit(text1_5, (520, 80))
+            text1_6 = font2.render(mp.org_name[6], True, (0,0,0), (255,255,255))
+            screen.blit(text1_6, (520, 90))
+            text1_7 = font2.render(mp.org_name[7], True, (0,0,0), (255,255,255))
+            screen.blit(text1_7, (520, 100))
+            text1_8 = font2.render(mp.org_name[8], True, (0,0,0), (255,255,255))
+            screen.blit(text1_8, (520, 110))
+            text1_9 = font2.render(mp.org_name[9], True, (0,0,0), (255,255,255))
+            screen.blit(text1_9, (520, 120))
+            text1_10 = font2.render(mp.org_name[10], True, (0,0,0), (255,255,255))
+            screen.blit(text1_10, (520, 130))
+            text1_11 = font2.render(mp.org_name[11], True, (0,0,0), (255,255,255))
+            screen.blit(text1_11, (520, 140))
+            text1_12 = font2.render(mp.org_name[12], True, (0,0,0), (255,255,255))
+            screen.blit(text1_12, (520, 150))
+            text1_13 = font2.render(mp.org_name[13], True, (0,0,0), (255,255,255))
+            screen.blit(text1_13, (520, 160))
+            text1_14 = font2.render(mp.org_name[14], True, (0,0,0), (255,255,255))
+            screen.blit(text1_14, (520, 170))
+            text1_15 = font2.render(mp.org_name[15], True, (0,0,0), (255,255,255))
+            screen.blit(text1_15, (520, 180))
+            text1_16 = font2.render(mp.org_name[16], True, (0,0,0), (255,255,255))
+            screen.blit(text1_16, (520, 190))
+            text1_17 = font2.render(mp.org_name[17], True, (0,0,0), (255,255,255))
+            screen.blit(text1_17, (520, 200))
+            text1_18 = font2.render(mp.org_name[18], True, (0,0,0), (255,255,255))
+            screen.blit(text1_18, (520, 210))
+            text1_19 = font2.render(mp.org_name[19], True, (0,0,0), (255,255,255))
+            screen.blit(text1_19, (520, 220))
+            text1_20 = font2.render(mp.org_name[20], True, (0,0,0), (255,255,255))
+            screen.blit(text1_20, (520, 230))
+            text1_21 = font2.render(mp.org_name[21], True, (0,0,0), (255,255,255))
+            screen.blit(text1_21, (520, 240))
+            text1_22 = font2.render(mp.org_name[22], True, (0,0,0), (255,255,255))
+            screen.blit(text1_22, (520, 250))
+            text1_23 = font2.render(mp.org_name[23], True, (0,0,0), (255,255,255))
+            screen.blit(text1_23, (520, 260))
+            text1_24 = font2.render(mp.org_name[24], True, (0,0,0), (255,255,255))
+            screen.blit(text1_24, (520, 270))
+            text1_25 = font2.render(mp.org_name[25], True, (0,0,0), (255,255,255))
+            screen.blit(text1_25, (520, 280))
+            text1_26 = font2.render(mp.org_name[26], True, (0,0,0), (255,255,255))
+            screen.blit(text1_26, (520, 290))
+            text1_27 = font2.render(mp.org_name[27], True, (0,0,0), (255,255,255))
+            screen.blit(text1_27, (520, 300))
+            text1_28 = font2.render(mp.org_name[28], True, (0,0,0), (255,255,255))
+            screen.blit(text1_28, (520, 310))
+            text1_29 = font2.render(mp.org_name[29], True, (0,0,0), (255,255,255))
+            screen.blit(text1_29, (520, 320))
+            text1_30 = font2.render(mp.org_name[30], True, (0,0,0), (255,255,255))
+            screen.blit(text1_30, (520, 330))
+            text1_31 = font2.render(mp.org_name[31], True, (0,0,0), (255,255,255))
+            screen.blit(text1_31, (520, 340))
+            text1_32 = font2.render(mp.org_name[32], True, (0,0,0), (255,255,255))
+            screen.blit(text1_32, (520, 350))
+            text1_33 = font2.render(mp.org_name[33], True, (0,0,0), (255,255,255))
+            screen.blit(text1_33, (520, 360))
+            text1_34 = font2.render(mp.org_name[34], True, (0,0,0), (255,255,255))
+            screen.blit(text1_34, (520, 370))
+            text1_35 = font2.render(mp.org_name[35], True, (0,0,0), (255,255,255))
+            screen.blit(text1_35, (520, 380))
+            text1_36 = font2.render(mp.org_name[36], True, (0,0,0), (255,255,255))
+            screen.blit(text1_36, (520, 390))
+            text1_37 = font2.render(mp.org_name[37], True, (0,0,0), (255,255,255))
+            screen.blit(text1_37, (520, 400))
+            text1_38 = font2.render(mp.org_name[38], True, (0,0,0), (255,255,255))
+            screen.blit(text1_38, (520, 410))
+            text1_39 = font2.render(mp.org_name[39], True, (0,0,0), (255,255,255))
+            screen.blit(text1_39, (520, 420))
+            text1_40 = font2.render(mp.org_name[40], True, (0,0,0), (255,255,255))
+            screen.blit(text1_40, (520, 430))
+    
+    
+
+
+
+
+
+
+        
+        pygame.display.flip()
+        clock.tick(30)
+        
+    pygame.quit()
+    # Удаляем файл с изображением, геокодера и списков организаций.
+    os.remove(map_file)
+    os.remove(geo_file)
+    os.remove(org_file)
+    os.remove(ost_file)
+    os.remove(metro_file)
+    os.remove(jd_file)
+
+   
+if __name__ == "__main__":
+    main()  # Вызов основной подпрограммы
+
